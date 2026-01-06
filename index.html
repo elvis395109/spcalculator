@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YABAI 蝦皮售價試算器（多 SKU）</title>
+  <style>
+    :root { --accent: linear-gradient(45deg,#ff6b35,#f7931e); --card-bg: linear-gradient(45deg,#e8f5e8,#d4edda); }
+    body { font-family: Arial, Helvetica, sans-serif; max-width:1100px; margin:28px auto; padding:18px; background:#f9f9f9; color:#222; }
+    h1 { text-align:center; color:#333; margin-bottom:14px; }
+    .grid { display:grid; grid-template-columns:1fr 340px; gap:18px; align-items:start; }
+    .panel { background:#fff; padding:14px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06); }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:8px; text-align:left; border-bottom:1px solid #eee; vertical-align:middle; }
+    th { font-weight:700; background:#fafafa; font-size:13px; }
+    input[type="number"], select, input[type="text"] { width:100%; padding:6px 8px; font-size:14px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box; }
+    .small { width:80px; }
+    .actions { display:flex; gap:8px; margin-top:10px; }
+    button.primary { background:var(--accent); color:#fff; padding:10px 12px; border:none; font-size:14px; border-radius:8px; cursor:pointer; }
+    button.ghost { background:transparent; border:1px solid #ddd; padding:8px 10px; border-radius:8px; cursor:pointer; }
+    .muted { color:#666; font-size:13px; }
+    .good { color:green; } .bad { color:red; }
+    .settings-row { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+    .settings-row label { flex:1; font-size:13px; }
+    .setting-input { width:100px; }
+    .total { font-weight:700; font-size:16px; display:flex; justify-content:space-between; padding-top:8px; }
+    @media (max-width:940px){ .grid { grid-template-columns:1fr; } .panel { padding:12px; } .small { width:70px; } }
+  </style>
+</head>
+<body>
+  <h1>🛒 YABAI 蝦皮售價試算器（多 SKU）</h1>
+
+  <div class="grid">
+    <div class="panel" id="skuPanel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div>
+          <strong>商品列表（SKU / 批次）</strong>
+          <div class="muted">新增多個商品或批次，系統會顯示每列明細與合計。</div>
+        </div>
+        <div>
+          <button id="addRowBtn" class="primary" title="新增商品">＋ 新增</button>
+        </div>
+      </div>
+
+      <div style="overflow:auto;">
+        <table id="skuTable" aria-label="商品清單">
+          <thead>
+            <tr>
+              <th style="width:160px">名稱</th>
+              <th style="width:110px">成本</th>
+              <th style="width:110px">售價</th>
+              <th style="width:90px">數量</th>
+              <th style="width:120px">免運</th>
+              <th style="width:80px">促銷</th>
+              <th style="width:80px">蝦幣</th>
+              <th style="width:80px">長備貨</th>
+              <th style="width:140px">收入 / 手續 / 淨利</th>
+              <th style="width:120px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="skuBody">
+            <!-- rows injected -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="total" style="margin-top:12px;">
+        <div>合計</div>
+        <div id="totalsArea">
+          <span id="totalRevenue">$0</span> /
+          <span id="totalFees">$0</span> /
+          <span id="totalProfit" class="muted">$0</span> /
+          <span id="totalMargin">0.0%</span>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:10px;">
+        <button id="calcAllBtn" class="primary">🚀 計算</button>
+        <button id="copyAllBtn" class="ghost">📋 複製結果</button>
+        <button id="clearBtn" class="ghost">清除全部</button>
+      </div>
+    </div>
+
+    <div class="panel" id="settingPanel">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <strong>設定面板（費率）</strong>
+        <div class="muted">變更會即時套用並儲存</div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <div class="settings-row">
+          <label>成交手續費（一般）<input id="feeBase" class="setting-input" type="number" step="0.001" min="0" /></label>
+          <label>成交手續費（促銷）<input id="feePromo" class="setting-input" type="number" step="0.001" min="0" /></label>
+        </div>
+
+        <div class="settings-row">
+          <label>蝦幣折抵（減幅）<input id="feeShrimp" class="setting-input" type="number" step="0.001" min="0" /></label>
+          <label>流水服務費（%）<input id="feeFlow" class="setting-input" type="number" step="0.001" min="0" /></label>
+        </div>
+
+        <div class="settings-row">
+          <label>促銷額外費（%）<input id="feePromoExtra" class="setting-input" type="number" step="0.001" min="0" /></label>
+          <label>長備貨費（%）<input id="feeLong" class="setting-input" type="number" step="0.001" min="0" /></label>
+        </div>
+
+        <div class="muted" style="margin-top:8px;">免運方案為每列獨立設定：方案一 = 6%（按收入），方案二 = 60元/筆。</div>
+
+        <div style="margin-top:12px;">
+          <button id="resetSettingsBtn" class="ghost">還原預設費率</button>
+          <button id="saveSettingsBtn" class="primary" style="margin-left:6px;">儲存設定</button>
+        </div>
+      </div>
+
+      <hr style="margin:12px 0">
+
+      <div>
+        <strong>快速說明</strong>
+        <ol class="muted" style="padding-left:16px; margin-top:6px;">
+          <li>每列可設定是否為促銷 / 使用蝦幣 / 長備貨，並選擇免運方式。</li>
+          <li>設定面板變更會即時生效並儲存在 localStorage。</li>
+          <li>新增多列後可一次計算全部合計，或使用「複製結果」將明細貼到文件/聊天。</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      /* ---------- helpers ---------- */
+      function q(id){ return document.getElementById(id); }
+      function toNum(v, fallback=0){ const n = Number(v); return Number.isFinite(n) ? n : fallback; }
+      function money(n){ return '$' + Math.round(n).toLocaleString(); }
+      function pct(n){ return (n*100).toFixed(1) + '%'; }
+
+      /* ---------- localStorage keys & defaults ---------- */
+      const LS_KEY = 'yabai:multisku:v1';
+      const DEFAULTS = {
+        settings: {
+          feeBase: 0.06,
+          feePromo: 0.075,
+          feeShrimp: 0.015,
+          feeFlow: 0.025,
+          feePromoExtra: 0.02,
+          feeLong: 0.03
+        },
+        rows: [
+          { id: genId(), name: '示例商品 A', cost:500, price:1000, qty:1, freeship:'1', promo:false, shrimp:true, long:false }
+        ]
+      };
+
+      function genId(){ return 'r' + Math.random().toString(36).slice(2,9); }
+
+      /* ---------- state ---------- */
+      let state = loadState();
+      // last computed results (for copy)
+      let lastResults = { rows: [], totals: {} };
+
+      /* ---------- elements ---------- */
+      const skuBody = q('skuBody');
+      const addRowBtn = q('addRowBtn');
+      const calcAllBtn = q('calcAllBtn');
+      const clearBtn = q('clearBtn');
+      const totalRevenueEl = q('totalRevenue');
+      const totalFeesEl = q('totalFees');
+      const totalProfitEl = q('totalProfit');
+      const totalMarginEl = q('totalMargin');
+      const copyAllBtn = q('copyAllBtn');
+
+      const feeBaseEl = q('feeBase');
+      const feePromoEl = q('feePromo');
+      const feeShrimpEl = q('feeShrimp');
+      const feeFlowEl = q('feeFlow');
+      const feePromoExtraEl = q('feePromoExtra');
+      const feeLongEl = q('feeLong');
+      const resetSettingsBtn = q('resetSettingsBtn');
+      const saveSettingsBtn = q('saveSettingsBtn');
+
+      /* ---------- load & save ---------- */
+      function loadState(){
+        try{
+          const raw = localStorage.getItem(LS_KEY);
+          if(raw){
+            const parsed = JSON.parse(raw);
+            if(parsed && Array.isArray(parsed.rows) && parsed.settings) return parsed;
+          }
+        }catch(e){}
+        return JSON.parse(JSON.stringify(DEFAULTS));
+      }
+
+      function saveState(){
+        try{
+          localStorage.setItem(LS_KEY, JSON.stringify(state));
+        }catch(e){ console.warn('save failed', e); }
+      }
+
+      /* ---------- render rows ---------- */
+      function renderRows(){
+        skuBody.innerHTML = '';
+        state.rows.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.dataset.id = row.id;
+          tr.innerHTML = `
+            <td><input type="text" class="name" value="${escapeHtml(row.name||'')}" /></td>
+            <td><input type="number" class="cost small" min="0" step="1" value="${toNum(row.cost,0)}" /></td>
+            <td><input type="number" class="price small" min="0" step="1" value="${toNum(row.price,0)}" /></td>
+            <td><input type="number" class="qty small" min="1" step="1" value="${Math.max(1,Math.floor(toNum(row.qty,1)))}" /></td>
+            <td>
+              <select class="freeship">
+                <option value="1"${row.freeship==='1' ? ' selected':''}>方案一：6%</option>
+                <option value="2"${row.freeship==='2' ? ' selected':''}>方案二：60元/筆</option>
+              </select>
+            </td>
+            <td style="text-align:center"><input type="checkbox" class="promo"${row.promo ? ' checked':''} /></td>
+            <td style="text-align:center"><input type="checkbox" class="shrimp"${row.shrimp ? ' checked':''} /></td>
+            <td style="text-align:center"><input type="checkbox" class="long"${row.long ? ' checked':''} /></td>
+            <td class="summary muted" style="white-space:nowrap"></td>
+            <td style="text-align:center">
+              <button class="removeBtn ghost">刪除</button>
+              <button class="copyRowBtn ghost" title="複製此列明細">複製</button>
+            </td>
+          `;
+          skuBody.appendChild(tr);
+        });
+        attachRowListeners();
+      }
+
+      function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+      /* ---------- row events (delegation) ---------- */
+      function attachRowListeners(){
+        skuBody.querySelectorAll('input, select, button').forEach(el=>{
+          el.removeEventListener('input', onRowInput);
+          el.removeEventListener('change', onRowInput);
+          el.addEventListener('input', onRowInput);
+          el.addEventListener('change', onRowInput);
+        });
+
+        skuBody.querySelectorAll('.removeBtn').forEach(btn=>{
+          btn.removeEventListener('click', onRemoveRow);
+          btn.addEventListener('click', onRemoveRow);
+        });
+
+        skuBody.querySelectorAll('.copyRowBtn').forEach(btn=>{
+          btn.removeEventListener('click', onCopyRow);
+          btn.addEventListener('click', onCopyRow);
+        });
+      }
+
+      function onRowInput(e){
+        const tr = e.target.closest('tr');
+        if(!tr) return;
+        const id = tr.dataset.id;
+        const row = findRow(id);
+        if(!row) return;
+
+        row.name = tr.querySelector('.name').value;
+        row.cost = toNum(tr.querySelector('.cost').value, 0);
+        row.price = toNum(tr.querySelector('.price').value, 0);
+        row.qty = Math.max(1, Math.floor(toNum(tr.querySelector('.qty').value, 1)));
+        row.freeship = tr.querySelector('.freeship').value;
+        row.promo = !!tr.querySelector('.promo').checked;
+        row.shrimp = !!tr.querySelector('.shrimp').checked;
+        row.long = !!tr.querySelector('.long').checked;
+
+        saveState();
+        scheduleCalc();
+      }
+
+      function onRemoveRow(e){
+        const tr = e.target.closest('tr');
+        if(!tr) return;
+        const id = tr.dataset.id;
+        state.rows = state.rows.filter(r=>r.id !== id);
+        saveState();
+        renderRows();
+        scheduleCalc();
+      }
+
+      function onCopyRow(e){
+        const tr = e.target.closest('tr');
+        if(!tr) return;
+        const id = tr.dataset.id;
+        const res = lastResults.rows.find(r=>r.id===id);
+        if(!res){
+          alert('尚未計算或找不到此列結果，請先按「計算」。');
+          return;
+        }
+        const text = `商品：${res.name}\n數量：${res.qty}\n售價：${res.price}\n收入：${Math.round(res.revenue)}\n手續費：${Math.round(res.fees)}\n淨利：${Math.round(res.profit)}\n利潤率：${res.margin.toFixed(1)}%`;
+        copyTextToClipboard(text, e.target);
+      }
+
+      function findRow(id){ return state.rows.find(r=>r.id===id); }
+
+      /* ---------- add / clear ---------- */
+      addRowBtn.addEventListener('click', ()=>{
+        const r = { id: genId(), name:'新商品', cost:0, price:0, qty:1, freeship:'1', promo:false, shrimp:true, long:false };
+        state.rows.push(r);
+        saveState();
+        renderRows();
+        scheduleCalc();
+      });
+
+      clearBtn.addEventListener('click', ()=>{
+        if(!confirm('清除全部商品？此操作會刪除所有列。')) return;
+        state.rows = [];
+        saveState();
+        renderRows();
+        scheduleCalc();
+      });
+
+      /* ---------- settings render / events ---------- */
+      function renderSettings(){
+        const s = state.settings;
+        feeBaseEl.value = s.feeBase;
+        feePromoEl.value = s.feePromo;
+        feeShrimpEl.value = s.feeShrimp;
+        feeFlowEl.value = s.feeFlow;
+        feePromoExtraEl.value = s.feePromoExtra;
+        feeLongEl.value = s.feeLong;
+      }
+
+      function applySettingsFromInputs(){
+        state.settings.feeBase = Math.max(0, toNum(feeBaseEl.value, state.settings.feeBase));
+        state.settings.feePromo = Math.max(0, toNum(feePromoEl.value, state.settings.feePromo));
+        state.settings.feeShrimp = Math.max(0, toNum(feeShrimpEl.value, state.settings.feeShrimp));
+        state.settings.feeFlow = Math.max(0, toNum(feeFlowEl.value, state.settings.feeFlow));
+        state.settings.feePromoExtra = Math.max(0, toNum(feePromoExtraEl.value, state.settings.feePromoExtra));
+        state.settings.feeLong = Math.max(0, toNum(feeLongEl.value, state.settings.feeLong));
+        saveState();
+      }
+
+      feeBaseEl.addEventListener('input', ()=>{ applySettingsFromInputs(); scheduleCalc(); });
+      feePromoEl.addEventListener('input', ()=>{ applySettingsFromInputs(); scheduleCalc(); });
+      feeShrimpEl.addEventListener('input', ()=>{ applySettingsFromInputs(); scheduleCalc(); });
+      feeFlowEl.addEventListener('input', ()=>{ applySettingsFromInputs(); scheduleCalc(); });
+      feePromoExtraEl.addEventListener('input', ()=>{ applySettingsFromInputs(); scheduleCalc(); });
+      feeLongEl.addEventListener('input', ()=>{ applySettingsFromInputs(); scheduleCalc(); });
+
+      resetSettingsBtn.addEventListener('click', ()=>{
+        if(!confirm('還原為預設費率？')) return;
+        state.settings = JSON.parse(JSON.stringify(DEFAULTS.settings));
+        renderSettings();
+        saveState();
+        scheduleCalc();
+      });
+
+      saveSettingsBtn.addEventListener('click', ()=>{
+        applySettingsFromInputs();
+        alert('已儲存設定');
+      });
+
+      /* ---------- calculation ---------- */
+      let calcTimer;
+      function scheduleCalc(){
+        clearTimeout(calcTimer);
+        calcTimer = setTimeout(calculateAll, 160);
+      }
+
+      function calculateAll(){
+        const s = state.settings;
+        let totalRevenue = 0, totalFees = 0, totalProfit = 0;
+        const rowsResults = [];
+
+        // iterate rows and compute per row
+        state.rows.forEach(row=>{
+          const revenue = row.price * row.qty;
+          let trans = row.promo ? s.feePromo : s.feeBase;
+          if(row.shrimp) trans = Math.max(0, trans - s.feeShrimp);
+          const trans_fee = revenue * trans;
+          const flow_fee = revenue * s.feeFlow;
+          const free_fee = row.freeship === '1' ? revenue * 0.06 : 60 * row.qty;
+          const promo_fee = row.promo ? revenue * s.feePromoExtra : 0;
+          const long_fee = row.long ? revenue * s.feeLong : 0;
+
+          const fees = trans_fee + flow_fee + free_fee + promo_fee + long_fee;
+          const profit = revenue - fees - (row.cost * row.qty);
+          const margin = revenue > 0 ? (profit / revenue * 100) : 0;
+
+          rowsResults.push({
+            id: row.id,
+            name: row.name,
+            qty: row.qty,
+            price: row.price,
+            revenue, fees, profit, margin
+          });
+
+          totalRevenue += revenue;
+          totalFees += fees;
+          totalProfit += profit;
+        });
+
+        const totalMargin = totalRevenue > 0 ? (totalProfit / totalRevenue * 100) : 0;
+
+        // update UI per-row summary cells
+        skuBody.querySelectorAll('tr').forEach(tr=>{
+          const id = tr.dataset.id;
+          const r = rowsResults.find(x=>x.id===id);
+          const summaryCell = tr.querySelector('.summary');
+          if(r){
+            summaryCell.textContent = `${money(r.revenue)} / ${money(r.fees)} / ${money(r.profit)}`;
+            summaryCell.className = 'summary ' + (r.profit >= 0 ? 'good' : 'bad');
+          } else {
+            summaryCell.textContent = '';
+          }
+        });
+
+        // update totals UI
+        totalRevenueEl.textContent = money(totalRevenue);
+        totalFeesEl.textContent = money(totalFees);
+        totalProfitEl.textContent = money(totalProfit);
+        totalProfitEl.className = totalProfit >= 0 ? 'good' : 'bad';
+        totalMarginEl.textContent = totalMargin.toFixed(1) + '%';
+
+        // store lastResults for copy
+        lastResults = { rows: rowsResults, totals: { revenue: totalRevenue, fees: totalFees, profit: totalProfit, margin: totalMargin } };
+
+        saveState();
+        return lastResults;
+      }
+
+      calcAllBtn.addEventListener('click', calculateAll);
+
+      /* ---------- copy functionality ---------- */
+      function copyTextToClipboard(text, triggerBtn){
+        // try navigator.clipboard
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(text).then(()=>{
+            const btn = triggerBtn || copyAllBtn;
+            const original = btn.textContent;
+            btn.textContent = '已複製';
+            setTimeout(()=> btn.textContent = original, 1400);
+          }).catch(err=>{
+            fallbackCopy(text, triggerBtn);
+          });
+        } else {
+          fallbackCopy(text, triggerBtn);
+        }
+      }
+
+      function fallbackCopy(text, triggerBtn){
+        // fallback: create textarea and execCommand
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          const ok = document.execCommand('copy');
+          const btn = triggerBtn || copyAllBtn;
+          const original = btn.textContent;
+          btn.textContent = ok ? '已複製' : '複製失敗';
+          setTimeout(()=> btn.textContent = original, 1400);
+        } catch(e){
+          alert('複製失敗，請手動複製以下文字：\n\n' + text);
+        } finally {
+          document.body.removeChild(ta);
+        }
+      }
+
+      copyAllBtn.addEventListener('click', ()=>{
+        // ensure we have latest results
+        const results = calculateAll();
+        if(!results || !Array.isArray(results.rows)) return alert('尚未有計算結果');
+        // build text
+        let lines = [];
+        lines.push('商品明細：');
+        results.rows.forEach((r, idx)=>{
+          lines.push(`${idx+1}. ${r.name}  數量:${r.qty} 售價:${r.price} 收入:${Math.round(r.revenue)} 手續:${Math.round(r.fees)} 淨利:${Math.round(r.profit)} 利潤率:${r.margin.toFixed(1)}%`);
+        });
+        lines.push('');
+        lines.push(`合計 收入:${Math.round(results.totals.revenue)} 手續:${Math.round(results.totals.fees)} 淨利:${Math.round(results.totals.profit)} 利潤率:${results.totals.margin.toFixed(1)}%`);
+        const text = lines.join('\n');
+        copyTextToClipboard(text, copyAllBtn);
+      });
+
+      /* ---------- initial render/load ---------- */
+      function init(){
+        renderRows();
+        renderSettings();
+        // initial calc
+        calculateAll();
+      }
+
+      // load existing state into UI (render settings already called)
+      init();
+
+      /* ---------- utilities ---------- */
+      // keep calculation reactive: schedule on input changes inside rows
+      let debounceTimer;
+      skuBody.addEventListener('input', ()=>{
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(()=> calculateAll(), 180);
+      });
+      skuBody.addEventListener('change', ()=>{
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(()=> calculateAll(), 180);
+      });
+
+    })();
+  </script>
+</body>
+</html>
